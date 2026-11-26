@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
+# Modified from upstream to install the covariance relay and exclude local backups.
 project(articubot_one)
 
 if(NOT CMAKE_C_STANDARD)
@@ -20,14 +21,26 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+# 主要内容：安装项目资源
 install(
   DIRECTORY config description launch worlds maps rviz
   DESTINATION share/${PROJECT_NAME}
+  FILES_MATCHING
+  PATTERN "*.yaml"
+  PATTERN "*.xacro"
+  PATTERN "*.launch.py"
+  PATTERN "*_launch.py"
+  PATTERN "*.sdf"
+  PATTERN "*.pgm"
+  PATTERN "*.rviz"
+  PATTERN "ekf_[A-D].yaml" EXCLUDE
+  PATTERN "__pycache__" EXCLUDE
 )
-
+# 安装python节点
 install(PROGRAMS
   scripts/patrol_node.py
   scripts/frontier_explorer.py
+  scripts/sensor_covariance_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

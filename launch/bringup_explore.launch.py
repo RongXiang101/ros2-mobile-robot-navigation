@@ -1,7 +1,8 @@
+# Modified from upstream to isolate SLAM and Nav2 launch parameters.
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import GroupAction, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -41,7 +42,8 @@ def generate_launch_description():
     # navigate_to_pose action server up before it sends its first goal.
     return LaunchDescription([
         sim,
-        TimerAction(period=8.0, actions=[slam]),
-        TimerAction(period=10.0, actions=[nav2]),
+        # Both included launch files declare params_file with different defaults.
+        TimerAction(period=8.0, actions=[GroupAction(actions=[slam])]),
+        TimerAction(period=10.0, actions=[GroupAction(actions=[nav2])]),
         TimerAction(period=12.0, actions=[frontier]),
     ])

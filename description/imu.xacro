@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="imu" params="parent">
+
+    <!-- IMU Link -->
+    <link name="imu_link">
+      <inertial>
+        <mass value="0.01"/>
+        <inertia
+          ixx="0.000001" ixy="0" ixz="0"
+          iyy="0.000001" iyz="0"
+          izz="0.000001"/>
+      </inertial>
+    </link>
+
+    <!-- Fixed Joint -->
+    <joint name="imu_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="imu_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Gazebo IMU Sensor -->
+    <gazebo reference="imu_link">
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <visualize>false</visualize>
+        <topic>/imu/data</topic>
+        <gz_frame_id>imu_link</gz_frame_id>
+        <imu>
+
+    <!-- Gyroscope Noise -->
+    <angular_velocity>
+
+        <x>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.01</stddev>
+            </noise>
+        </x>
+
+        <y>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.01</stddev>
+            </noise>
+        </y>
+
+        <z>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.01</stddev>
+            </noise>
+        </z>
+
+    </angular_velocity>
+
+    <!-- Accelerometer Noise -->
+    <linear_acceleration>
+
+        <x>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+            </noise>
+        </x>
+
+        <y>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+            </noise>
+        </y>
+
+        <z>
+            <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+            </noise>
+        </z>
+
+    </linear_acceleration>
+
+</imu>
+
+	</sensor>
+    </gazebo>
+
+  </xacro:macro>
+
+</robot>

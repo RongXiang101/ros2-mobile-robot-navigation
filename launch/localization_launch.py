@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Modified from upstream to default to the bundled SLAM test map v2.
 
 import os
 
@@ -64,7 +65,7 @@ def generate_launch_description():
 
         DeclareLaunchArgument(
             'map',
-            default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
+            default_value=os.path.join(bringup_dir, 'maps', 'slam_test_map_v2.yaml'),
             description='Full path to map yaml file to load'),
 
         DeclareLaunchArgument(

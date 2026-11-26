@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified from upstream to run one waypoint pass and stop on failure or cancellation.
 import rclpy
 from rclpy.node import Node
 from nav2_simple_commander.robot_navigator import BasicNavigator
@@ -29,21 +30,42 @@ class PatrolNode(Node):
         return pose
         
     def run_patrol(self):
+        from nav2_simple_commander.robot_navigator import TaskResult
+
         self.navigator.waitUntilNav2Active()
-        
-        while rclpy.ok():
-            goal = self.waypoints[self.current_waypoint]
+
+         # 第一版：完成一轮巡航后退出
+        for i, goal in enumerate(self.waypoints):
+
+            if not rclpy.ok():
+                break
+
             goal.header.stamp = self.navigator.get_clock().now().to_msg()
-            
-            self.get_logger().info(f'Going to waypoint {self.current_waypoint}')
+
+            self.get_logger().info(f'Going to waypoint {i}')
             self.navigator.goToPose(goal)
-            
-            # Poll rather than busy-wait: isTaskComplete() spins the rclpy executor
-            # internally, so a bare `pass` loop just burns a core.
-            while not self.navigator.isTaskComplete():
+
+            while rclpy.ok() and not self.navigator.isTaskComplete():
                 time.sleep(0.1)
-            
-            self.current_waypoint = (self.current_waypoint + 1) % len(self.waypoints)
+
+            if not rclpy.ok():
+                self.navigator.cancelTask()
+                break
+
+            result = self.navigator.getResult()
+
+            if result == TaskResult.SUCCEEDED:
+                self.get_logger().info(f'Waypoint {i} succeeded.')
+
+            elif result == TaskResult.CANCELED:
+                self.get_logger().warn(f'Waypoint {i} canceled.')
+                break
+
+            else:
+                self.get_logger().error(f'Waypoint {i} failed.')
+                break
+
+        self.get_logger().info('Patrol finished.')
 
 def main():
     rclpy.init()

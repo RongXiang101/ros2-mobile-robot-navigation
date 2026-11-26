@@ -21,6 +21,10 @@
 
     <xacro:include filename="camera.xacro"/>
 
+    <!-- Modified from upstream to include the simulated IMU. -->
+    <xacro:include filename="imu.xacro"/>
+    <xacro:imu parent="base_link"/>
+
     <!-- Cosmetics -->
     <xacro:include filename="face.xacro"/>
 

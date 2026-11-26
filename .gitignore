@@ -1,4 +1,5 @@
 # colcon / ament build output (this package is normally cloned into a workspace src/)
+# Modified from upstream to exclude local experiment and release artifacts.
 build/
 install/
 log/
@@ -20,7 +21,24 @@ backup/
 *.bak
 *.orig
 *.rej
+*.backup
+*.before_vy_fix
+/config/ekf_[A-D].yaml
+/frames_*.gv
+/frames_*.pdf
 
 # RViz/Gazebo runtime leftovers
 .gazebo/
 *.log
+*.so
+*.so.*
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.ssh/
+*.pem
+*.key
+id_rsa*
+id_ed25519*

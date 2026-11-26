@@ -1,3 +1,4 @@
+# Modified from upstream to reduce Navfn tolerance and load the map via localization_launch.py.
 amcl:
   ros__parameters:
     use_sim_time: True
@@ -157,7 +158,7 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
+      tolerance: 0.1
       use_astar: false
       allow_unknown: true
 
@@ -185,3 +186,7 @@ waypoint_follower:
     use_sim_time: True
     loop_rate: 20
     stop_on_failure: false
+
+map_server:
+  ros__parameters:
+    yaml_filename: ""
