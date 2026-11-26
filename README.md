@@ -1,5 +1,7 @@
 # ROS 2 Autonomous Vacuum Robot
 
+[简体中文](README.zh-CN.md)
+
 > This README was rewritten for the modified version of Samer Odeh’s ROS 2 Autonomous Robot project.
 
 ## Project Overview
@@ -37,13 +39,13 @@ Use Python 3 and the ROS 2 Humble packages listed in [package.xml](package.xml),
 
 ## Installation
 
-Install ROS 2 Humble, Fortress, `rosdep`, and `colcon` first. Initialize `rosdep` once if needed (`sudo rosdep init`, then `rosdep update`). Set `REPO_URL` to the HTTPS or SSH clone URL of this repository.
+Install ROS 2 Humble, Fortress, `rosdep`, and `colcon` first. Initialize `rosdep` once if needed (`sudo rosdep init`, then `rosdep update`).
 
 ```bash
 source /opt/ros/humble/setup.bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws
-git clone "$REPO_URL" src/articubot_one
+git clone https://github.com/RongXiang101/ros2-autonomous-vacuum-robot.git src/articubot_one
 rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
 colcon build --packages-select articubot_one
 source install/setup.bash
