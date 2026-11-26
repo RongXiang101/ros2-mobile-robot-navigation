@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Modified from upstream to precheck paths and track spatial goal cooldowns and navigation results.
 
+import math
 import time
 
 import numpy as np
@@ -8,6 +9,7 @@ import rclpy
 
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.executors import ExternalShutdownException
 
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
@@ -47,6 +49,8 @@ class FrontierExplorer(Node):
         self.candidate_index = 0
         self.max_checks_per_round = 8
         self.checks_this_round = 0
+        self.filtered_this_round = 0
+        self.rejected_this_round = 0
 
         self.map = None
         self.map_info = None
@@ -97,6 +101,8 @@ class FrontierExplorer(Node):
         self.candidates = frontiers
         self.candidate_index = 0
         self.checks_this_round = 0
+        self.filtered_this_round = 0
+        self.rejected_this_round = 0
         self.exploring = True
 
         self.try_next_candidate()
@@ -125,23 +131,20 @@ class FrontierExplorer(Node):
     def frontier_to_goal(self, cell):
 
         x, y = cell
-
-        wx = (
-            x * self.map_info.resolution
-            + self.map_info.origin.position.x
+        origin = self.map_info.origin
+        q = origin.orientation
+        yaw = math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y ** 2 + q.z ** 2),
         )
-
-        wy = (
-            y * self.map_info.resolution
-            + self.map_info.origin.position.y
-        )
-
+        local_x = (x + 0.5) * self.map_info.resolution
+        local_y = (y + 0.5) * self.map_info.resolution
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
         goal = PoseStamped()
-
         goal.header.frame_id = 'map'
-
-        goal.pose.position.x = wx
-        goal.pose.position.y = wy
+        goal.pose.position.x = origin.position.x + cos_yaw * local_x - sin_yaw * local_y
+        goal.pose.position.y = origin.position.y + sin_yaw * local_x + cos_yaw * local_y
         goal.pose.orientation.w = 1.0
 
         return goal
@@ -198,6 +201,7 @@ class FrontierExplorer(Node):
             goal = self.frontier_to_goal(cell)
 
             if self.is_blocked(goal):
+                self.filtered_this_round += 1
                 continue
 
             self.active_goal = goal
@@ -206,8 +210,14 @@ class FrontierExplorer(Node):
             self.check_path(goal)
             return
 
+        check_limit_reached = self.checks_this_round >= self.max_checks_per_round
         self.get_logger().info(
-            'No plannable frontier found in this search round.'
+            'No acceptable path in this frontier search round: '
+            f'frontiers={len(self.candidates)}, filtered={self.filtered_this_round}, '
+            f'checks={self.checks_this_round}/{self.max_checks_per_round}, '
+            f'planning_rejections={self.rejected_this_round}, '
+            f'check_limit_reached={check_limit_reached}, '
+            f'unexamined={len(self.candidates) - self.candidate_index}.'
         )
 
         self.exploring = False
@@ -289,13 +299,15 @@ class FrontierExplorer(Node):
                 f'endpoint error={end_error:.3f} m.'
             )
 
-            self.send_goal(self.active_goal)
-
         except Exception as e:
             self.reject_candidate(f'Planning result error: {e}')
+            return
+
+        self.send_goal(self.active_goal)
 
     def reject_candidate(self, reason):
 
+        self.rejected_this_round += 1
         self.get_logger().warn(reason)
 
         # 排除该候选附近的区域，避免紧邻栅格重复规划。
@@ -308,6 +320,15 @@ class FrontierExplorer(Node):
 
     def send_goal(self, goal_pose):
 
+        if not self.nav_client.server_is_ready():
+            self.get_logger().warn(
+                'NavigateToPose action server is not ready. Retrying on a later map update.',
+                throttle_duration_sec=10.0,
+            )
+            self.exploring = False
+            self.active_goal = None
+            return
+
         x = goal_pose.pose.position.x
         y = goal_pose.pose.position.y
 
@@ -318,9 +339,13 @@ class FrontierExplorer(Node):
         goal = NavigateToPose.Goal()
         goal.pose = goal_pose
 
-        self.nav_client.wait_for_server()
-
-        future = self.nav_client.send_goal_async(goal)
+        try:
+            future = self.nav_client.send_goal_async(goal)
+        except Exception as e:
+            self.get_logger().error(f'Failed to send navigation goal: {e}')
+            self.exploring = False
+            self.active_goal = None
+            return
 
         future.add_done_callback(
             self.goal_response_callback
@@ -433,12 +458,12 @@ def main():
     try:
         rclpy.spin(node)
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
 
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-# Modified from upstream to install the covariance relay and exclude local backups.
+# Modified from upstream to install the covariance relay and register the frontier tests.
 project(articubot_one)
 
 if(NOT CMAKE_C_STANDARD)
@@ -19,6 +19,10 @@ find_package(ament_cmake REQUIRED)
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_frontier_explorer test/test_frontier_explorer.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
+  )
 endif()
 
 # 主要内容：安装项目资源
