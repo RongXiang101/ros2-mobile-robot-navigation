@@ -1,108 +1,98 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" width="920" height="600" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 690" role="img" aria-labelledby="title desc">
+  <title id="title">ROS 2 mobile robot navigation and exploration</title>
+  <desc id="desc">Gazebo sends sensor data through the bridge. The EKF and either SLAM Toolbox or AMCL supply complementary transforms. Nav2 consumes transforms, map, scan and raw odometry. The frontier explorer prechecks candidate paths before sending navigation goals.</desc>
+  <!-- Modified from upstream to show the current EKF, odometry, and frontier action flows. -->
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c8794"/>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#466783"/>
     </marker>
     <style>
-      .panel   { fill:#eef2f7; stroke:#d6dde6; stroke-width:1; }
-      .panelt  { font-size:12px; font-weight:600; fill:#5b6673; letter-spacing:.6px; }
-      .box     { fill:#ffffff; stroke:#c3cbd6; stroke-width:1.2; }
-      .boxa    { fill:#ffffff; stroke:#3f7cac; stroke-width:1.6; }
-      .name    { font-size:13.5px; font-weight:600; fill:#1c2128; }
-      .sub     { font-size:10.5px; fill:#6a7480; }
-      .flow    { stroke:#7c8794; stroke-width:1.6; fill:none; marker-end:url(#arrow); }
-      .flowb   { stroke:#3f7cac; stroke-width:1.8; fill:none; marker-end:url(#arrow); }
-      .topic   { font-size:10.5px; fill:#4a5563; font-family:'Cascadia Mono', Consolas, monospace; }
-      .topicb  { font-size:10.5px; fill:#3f7cac; font-family:'Cascadia Mono', Consolas, monospace; }
+      text { font-family: system-ui, sans-serif; fill: #18324a; }
+      .title { font-size: 27px; font-weight: 700; }
+      .heading { font-size: 18px; font-weight: 700; }
+      .label { font-size: 15px; font-weight: 650; }
+      .detail { font-size: 13px; fill: #35516b; }
+      .topic { font-family: ui-monospace, monospace; font-size: 13px; fill: #234c6a; }
+      .box { fill: #fff; stroke: #a2b9ce; stroke-width: 1.4; }
+      .nav { fill: #edf6fb; stroke: #5c91b3; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #466783; stroke-width: 1.65; marker-end: url(#arrow); }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="600" fill="#ffffff"/>
+  <rect width="1120" height="690" rx="18" fill="#f4f8fb"/>
+  <text class="title" x="36" y="47">ROS 2 mobile robot navigation and exploration</text>
 
-  <!-- ============ Simulation ============ -->
-  <rect class="panel" x="24" y="56" width="216" height="200" rx="10"/>
-  <text class="panelt" x="38" y="78">SIMULATION</text>
-  <rect class="box" x="40" y="92" width="184" height="56" rx="7"/>
-  <text class="name" x="56" y="116">ign gazebo -s</text>
-  <text class="sub"  x="56" y="133">headless server, xvfb-run</text>
-  <rect class="box" x="40" y="166" width="184" height="66" rx="7"/>
-  <text class="name" x="56" y="190">slam_test.sdf</text>
-  <text class="sub"  x="56" y="207">12 × 12 m room, boxes</text>
-  <text class="sub"  x="56" y="221">gpu_lidar + RGB camera</text>
+  <rect class="box" x="40" y="76" width="240" height="76" rx="10"/>
+  <text class="heading" x="58" y="105">Gazebo Fortress</text>
+  <text class="detail" x="58" y="129">Differential drive, LiDAR and IMU</text>
+  <rect class="box" x="440" y="76" width="240" height="76" rx="10"/>
+  <text class="heading" x="458" y="105">ros_gz_bridge</text>
+  <text class="detail" x="458" y="129">Gazebo transport to ROS 2</text>
+  <path class="flow" d="M280 99H440"/>
+  <text class="detail" x="314" y="91">Sensor data</text>
+  <path class="flow" d="M440 135H280"/>
+  <text class="topic" x="324" y="127">/cmd_vel</text>
 
-  <!-- ============ Bridge ============ -->
-  <rect class="box" x="306" y="120" width="158" height="66" rx="7"/>
-  <text class="name" x="322" y="146">ros_gz_bridge</text>
-  <text class="sub"  x="322" y="163">parameter_bridge</text>
-  <text class="sub"  x="322" y="177">gz transport ⇄ ROS 2</text>
+  <rect class="box" x="40" y="224" width="290" height="80" rx="10"/>
+  <text class="heading" x="58" y="251">Covariance relay</text>
+  <text class="topic" x="58" y="275">/wheel/odom</text>
+  <text class="topic" x="58" y="293">/imu/data_cov</text>
+  <path class="flow" d="M491 152V184H185V224"/>
+  <text class="topic" x="205" y="176">/odom, /imu/data</text>
 
-  <path class="flow" d="M 240 153 L 300 153"/>
+  <rect class="box" x="400" y="224" width="320" height="80" rx="10"/>
+  <text class="heading" x="418" y="251">SLAM Toolbox or AMCL</text>
+  <text class="detail" x="418" y="275">Live mapping or saved-map localization</text>
+  <text class="topic" x="418" y="293">map → odom</text>
+  <path class="flow" d="M560 152V224"/>
+  <text class="topic" x="570" y="198">/scan</text>
 
-  <!-- ============ Mapping / TF ============ -->
-  <rect class="panel" x="530" y="56" width="216" height="200" rx="10"/>
-  <text class="panelt" x="544" y="78">MAPPING &amp; TF</text>
-  <rect class="box" x="546" y="92" width="184" height="56" rx="7"/>
-  <text class="name" x="562" y="116">robot_state_publisher</text>
-  <text class="sub"  x="562" y="133">URDF + /joint_states → TF</text>
-  <rect class="box" x="546" y="166" width="184" height="66" rx="7"/>
-  <text class="name" x="562" y="190">slam_toolbox</text>
-  <text class="sub"  x="562" y="207">async online mapping</text>
-  <text class="sub"  x="562" y="221">owns map → odom</text>
+  <rect class="box" x="40" y="348" width="290" height="87" rx="10"/>
+  <text class="heading" x="58" y="376">Planar EKF</text>
+  <text class="topic" x="58" y="399">odom → base_link</text>
+  <text class="topic" x="58" y="419">/odometry/filtered</text>
+  <path class="flow" d="M185 304V348"/>
 
-  <path class="flow" d="M 470 150 L 540 122"/>
-  <text class="topic" x="474" y="126">/clock</text>
-  <path class="flow" d="M 470 165 L 540 192"/>
-  <text class="topic" x="470" y="212">/scan  /odom</text>
+  <rect class="nav" x="400" y="354" width="680" height="94" rx="10"/>
+  <text class="heading" x="418" y="380">Nav2</text>
+  <text class="label" x="418" y="406">Navfn global planner</text>
+  <text class="label" x="632" y="406">DWB local controller</text>
+  <text class="label" x="848" y="406">Behavior tree</text>
+  <text class="detail" x="418" y="429">LiDAR costmaps</text>
+  <text class="detail" x="632" y="429">FollowPath</text>
+  <text class="detail" x="848" y="429">Replanning and recovery</text>
 
-  <!-- ============ Nav2 ============ -->
-  <rect class="panel" x="306" y="316" width="440" height="200" rx="10"/>
-  <text class="panelt" x="320" y="338">NAV2 (lifecycle-managed)</text>
+  <path class="flow" d="M330 391H400"/>
+  <text class="topic" x="350" y="381">TF</text>
+  <path class="flow" d="M560 304V354"/>
+  <text class="topic" x="570" y="334">TF, /map¹</text>
+  <path class="flow" d="M680 103H852V354"/>
+  <text class="topic" x="864" y="192">/scan → costmaps</text>
+  <text class="topic" x="864" y="217">/odom → BT, controller</text>
+  <path class="flow" d="M1080 388H1098V134H680"/>
+  <text class="topic" x="887" y="125">/cmd_vel → bridge</text>
+  <text class="detail" x="400" y="471">¹ Live map from SLAM Toolbox, saved map from Nav2 map server.</text>
 
-  <rect class="box" x="322" y="352" width="196" height="64" rx="7"/>
-  <text class="name" x="338" y="376">controller_server</text>
-  <text class="sub"  x="338" y="393">DWB local planner,</text>
-  <text class="sub"  x="338" y="407">re-weighted critics</text>
-
-  <rect class="box" x="534" y="352" width="196" height="64" rx="7"/>
-  <text class="name" x="550" y="376">planner_server</text>
-  <text class="sub"  x="550" y="393">NavFn global plan over</text>
-  <text class="sub"  x="550" y="407">the live SLAM costmap</text>
-
-  <rect class="box" x="322" y="432" width="196" height="64" rx="7"/>
-  <text class="name" x="338" y="456">bt_navigator</text>
-  <text class="sub"  x="338" y="473">navigate_to_pose,</text>
-  <text class="sub"  x="338" y="487">replanning + recovery</text>
-
-  <rect class="box" x="534" y="432" width="196" height="64" rx="7"/>
-  <text class="name" x="550" y="456">behavior_server</text>
-  <text class="sub"  x="550" y="473">spin / back-up / wait</text>
-  <text class="sub"  x="550" y="487">recovery behaviours</text>
-
-  <path class="flow" d="M 638 240 L 638 346"/>
-  <text class="topic" x="648" y="288">/map</text>
-  <text class="topic" x="648" y="303">map → odom</text>
-
-  <!-- cmd_vel feedback to the bridge -->
-  <path class="flow" d="M 380 346 L 380 192"/>
-  <text class="topic" x="290" y="250">/cmd_vel</text>
-
-  <!-- ============ Autonomy ============ -->
-  <rect class="panel" x="24" y="316" width="216" height="200" rx="10"/>
-  <text class="panelt" x="38" y="338">AUTONOMY  (this project)</text>
-
-  <rect class="boxa" x="40" y="352" width="184" height="76" rx="7"/>
-  <text class="name" x="56" y="376">frontier_explorer.py</text>
-  <text class="sub"  x="56" y="393">scans /map for free cells</text>
-  <text class="sub"  x="56" y="407">bordering unknown space,</text>
-  <text class="sub"  x="56" y="421">sends NavigateToPose goals</text>
-
-  <rect class="boxa" x="40" y="444" width="184" height="60" rx="7"/>
-  <text class="name" x="56" y="468">patrol_node.py</text>
-  <text class="sub"  x="56" y="485">waypoint loop over a</text>
-  <text class="sub"  x="56" y="499">map, via BasicNavigator</text>
-
-  <path class="flowb" d="M 230 390 L 292 390 L 292 448 L 314 448"/>
-  <path class="flowb" d="M 230 470 L 292 470 L 292 462 L 314 462"/>
-
-  <text class="sub" x="24" y="560" font-size="11">Blue outline = nodes written for this project. Everything else is stock ROS 2 Humble / Nav2 / SLAM Toolbox wiring.</text>
+  <rect x="22" y="505" width="1076" height="155" rx="13" fill="#e6eff6"/>
+  <text class="heading" x="40" y="533">Frontier exploration</text>
+  <rect class="box" x="40" y="553" width="178" height="64" rx="8"/>
+  <text class="label" x="54" y="579">OccupancyGrid</text>
+  <text class="topic" x="54" y="600">/map</text>
+  <rect class="box" x="258" y="553" width="200" height="64" rx="8"/>
+  <text class="label" x="272" y="579">Frontier selection</text>
+  <text class="detail" x="272" y="600">8 neighbors and cooldown</text>
+  <rect class="box" x="498" y="553" width="199" height="64" rx="8"/>
+  <text class="topic" x="510" y="579">ComputePathToPose</text>
+  <text class="detail" x="510" y="600">Path and endpoint checks</text>
+  <rect class="box" x="737" y="553" width="167" height="64" rx="8"/>
+  <text class="topic" x="750" y="579">NavigateToPose</text>
+  <text class="detail" x="750" y="600">One goal at a time</text>
+  <rect class="box" x="944" y="553" width="136" height="64" rx="8"/>
+  <text class="label" x="957" y="579">Action result</text>
+  <text class="detail" x="957" y="600">Update cooldown</text>
+  <path class="flow" d="M218 584H258"/>
+  <path class="flow" d="M458 584H498"/>
+  <path class="flow" d="M697 584H737"/>
+  <path class="flow" d="M904 584H944"/>
+  <path class="flow" d="M1012 617V640H358V617"/>
 </svg>

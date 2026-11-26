@@ -1,134 +1,60 @@
-# ROS 2 自主清洁机器人
+# 基于 ROS 2 的移动机器人自主导航与探索系统
 
 [English](README.md)
 
-## 项目概述
+本项目在 ROS 2 Humble 和 Gazebo Fortress 中集成差速移动机器人的平面状态估计、SLAM、定位、路径规划和自主探索。机器人可利用实时地图探索未知区域，也可加载已有地图并按航点巡航。
 
-本项目在 Ubuntu 22.04、ROS 2 Humble 和 Gazebo Fortress 中仿真一台差速驱动清洁机器人。机器人通过二维激光雷达构建占据栅格地图，使用 Nav2 规划路径并避开静态障碍物。它可以在建图时自主探索未知区域，也可以加载已有地图，按固定航点巡航。
+| 技术方向 | 本项目的工作 |
+| --- | --- |
+| 状态估计 | 接入仿真 IMU 和轮速里程计，利用差速车横向速度约束，验证 EKF 短时表现。 |
+| 导航可靠性 | 分析 Navfn 目标容差，在发送导航目标前预检查路径可行性并验证路径终点。 |
+| 自主探索 | 在上游前沿检测基础上增加空间冷却、动作结果处理和有上限的候选检查。 |
 
-Samer Odeh 的上游项目提供了机器人模型、测试房间、仿真桥接、SLAM 和 Nav2 启动方式、DWB 参数，以及前沿探索和航点巡航的基础实现。本项目在此基础上接入仿真 IMU、用 EKF 发布里程计坐标变换、将巡航改为单轮执行，并为前沿探索加入路径预检查、终点误差检查和目标冷却。
+![ROS 2 状态估计、TF、导航与前沿探索架构](docs/architecture.svg)
+
+本项目暂缺可发布的实测 Gazebo 或 RViz 截图、视频和 GIF。仓库包含已保存的占据栅格地图和验证记录。[地图元数据](maps/frontier_explore_v1.yaml) · [实验记录](experiments/2026-11-26-verification.md)
 
 ## 系统架构
 
-```text
-Gazebo Fortress → ros_gz_bridge
-  ├─ /scan → SLAM Toolbox 或 AMCL → map → odom
-  ├─ /odom、/imu/data → 协方差中继 → EKF → odom → base_link
-  └─ /joint_states → robot_state_publisher → 机器人各连杆的坐标变换
+- Gazebo 通过 `ros_gz_bridge` 向 ROS 2 提供 `/scan`、`/odom`、`/imu/data`、`/joint_states` 和 `/clock`。桥接节点把 Nav2 的 `/cmd_vel` 转发给 Gazebo 差速驱动。
+- 协方差中继发布 `/wheel/odom` 和 `/imu/data_cov`。EKF 发布 `/odometry/filtered`，并负责 `odom → base_link`。桥接不转发 Gazebo 的 TF。各连杆的坐标变换由 robot state publisher 提供。
+- 实时建图时，SLAM Toolbox 发布 `/map` 和 `map → odom`。使用已保存地图时，Nav2 map server 发布 `/map`，AMCL 发布 `map → odom`。两种模式都使用激光扫描和里程计 TF 链。
+- Nav2 使用 TF、地图和雷达代价地图。BT Navigator 的配置明确读取 Gazebo 原始 `/odom`。在默认命名空间中，Controller Server 的相对订阅名 `odom` 也解析为 `/odom`。EKF 发布的里程计消息和 TF 是两种输出。如果把某个 Nav2 节点切到 `/odometry/filtered`，它接收的速度输入会改变，需要单独验证。
 
-实时 /map → 前沿探索 → ComputePathToPose → NavigateToPose → Nav2
-已保存地图和定位结果 → 航点巡航 → NavigateToPose → Nav2
-Nav2 → /cmd_vel → ros_gz_bridge → Gazebo 差速驱动
-```
+## 状态估计
 
-协方差中继发布 `/wheel/odom` 和 `/imu/data_cov`，EKF 发布 `/odometry/filtered` 以及 `odom → base_link`。Nav2 的行为树导航器仍读取 Gazebo 提供的原始 `/odom`。仿真桥接不转发 Gazebo 的 TF。建图模式由 SLAM Toolbox 发布 `map → odom`，已知地图模式由 AMCL 发布该变换。
+平面 `robot_localization` EKF 将轮速里程计的 `vx`、`vy`、`wz` 与 IMU 的 `wz` 融合。协方差中继保留轮速里程计提供的近零横向速度，并为该测量赋予暂定方差 `1.0e-5`。在侧滑可忽略的差速车模型下，这条测量为滤波器提供横向速度约束。EKF 以 30 Hz 运行并发布 `odom → base_link`。
 
-| 目录 | 内容 |
-| --- | --- |
-| `config/` | Nav2、DWB 覆盖参数、EKF 和 SLAM Toolbox 配置 |
-| `description/`、`worlds/` | Xacro 机器人模型、仿真传感器和 Fortress 场景 |
-| `launch/` | 仿真、建图、定位、导航、巡航和组合探索启动文件 |
-| `scripts/` | 前沿探索、单轮巡航和协方差中继节点 |
-| `maps/` | 成对保存的 PGM 和 YAML 地图，包括实验探索地图 |
-| `rviz/`、`docs/` | RViz 配置和上游项目文档资源 |
-| `experiments/` | 历史实验记录和快照来源说明 |
+实验检查了输入主题、参数加载、静止时的横向速度协方差，以及短时后退和转动中的里程计一致性。Gazebo 的原始 `/odom` 是这些对比的参考信号。[EKF 验证记录](experiments/2026-11-26-verification.md#ekf)
 
-## 依赖
+## 导航与路径规划
 
-使用 Python 3 和 ROS 2 Humble。运行依赖包括 SLAM Toolbox、Nav2、Nav2 Simple Commander、`robot_localization`、RViz 2、Xacro，以及与 Fortress 配套的 `ros_gz_sim` 和 `ros_gz_bridge`。完整依赖见 [package.xml](package.xml)。
+Nav2 使用 Navfn（`GridBased`）做全局规划，以 DWB 的 `FollowPath` 做局部控制。障碍层和膨胀层使用激光数据支持局部避障，全局代价地图还使用占据地图。`NavigateToPose` 的行为树协调路径规划、跟踪、重规划和恢复。行为服务器配置了原地转动、后退、沿航向移动和等待。Navfn、DWB 和行为树均为 Nav2 组件。
 
-默认仿真启动方式会打开 Gazebo 图形界面，需要可用的显示环境和 Ogre2 渲染。可用 `ign gazebo --versions` 检查 Gazebo Sim 版本，Fortress 对应 6.x。
+Navigation Launch 先加载主参数文件，再给控制器进程叠加覆盖参数。`FollowPath.critics` 仍来自主 YAML。Launch 会应用仿真时钟、可选的 Nav2 命名空间、NavigateToPose 行为树路径和静态地图订阅设置。常规复现使用默认命名空间。若单独为 Nav2 指定其他命名空间，还需要配置匹配的输入和动作客户端。
 
-## 安装与构建
+## 自主探索
 
-先安装 ROS 2 Humble、Gazebo Fortress、`rosdep` 和 `colcon`。首次使用 `rosdep` 时，先运行 `sudo rosdep init`，再运行 `rosdep update`。
+上游检测器按照行优先顺序扫描占据栅格内部，将八邻域内至少有一个未知格的空闲格视作前沿。当前版本用栅格分辨率、地图原点位置和原点偏航角，将候选的格心转换到地图坐标系。
 
-```bash
-source /opt/ros/humble/setup.bash
-mkdir -p ~/ros2_ws/src
-cd ~/ros2_ws
-git clone https://github.com/RongXiang101/ros2-autonomous-vacuum-robot.git src/articubot_one
-rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
-colcon build --packages-select articubot_one
-source install/setup.bash
-```
+每轮最多检查 8 个未进入冷却范围的候选。探索节点异步调用 `ComputePathToPose`，使用 `GridBased` 规划器。候选需要规划成功、路径至少有两个位姿、终点误差不超过 `0.1 m`，才会提交 `NavigateToPose`。节点一次处理一个目标，收到动作结果后等待后续地图更新。如果提交时导航服务还未就绪，节点释放当前候选，并在下一次地图更新时重试，执行器仍可以处理其他回调。
 
-## 启动仿真
+冷却按单调时钟计时 180 秒。导航成功时的排除半径为 `0.45 m`，路径预检查被拒或导航中止时为 `0.65 m`，导航目标被拒或取消时为 `0.60 m`。
 
-在每个新终端加载 ROS 2 Humble 和工作空间的环境脚本，并让各终端使用同一个 ROS 域。以下命令启动包含静态障碍物和 IMU 系统的测试房间。
+## 工程问题与解决过程
 
-```bash
-PKG_SHARE="$(ros2 pkg prefix --share articubot_one)"
-ros2 launch articubot_one launch_sim.launch.py world:="$PKG_SHARE/worlds/slam_test.sdf"
-```
-
-ROS 与 Gazebo 的桥接主题定义在 [仿真启动文件](launch/launch_sim.launch.py) 中。启动建图或导航前，检查 `/clock`、`/scan`、`/odom`、`/imu/data`、`/wheel/odom` 和 `/odometry/filtered`。如需指定 EKF 参数文件，可传入 `ekf_config:=/path/to/ekf.yaml`。
-
-## SLAM 建图
-
-仿真正常运行后，在另一终端启动 SLAM Toolbox。它订阅 `/scan`，发布实时地图 `/map` 和 `map → odom`。
-
-```bash
-ros2 launch articubot_one online_async_launch.py
-```
-
-## AMCL 定位
-
-使用已保存地图导航时，保持仿真运行、停止 SLAM Toolbox，再启动 AMCL。默认地图为功能包内的 `slam_test_map_v2.yaml`。也可通过 `map` 参数选择其他地图，例如 `frontier_explore_v1.yaml`。
-
-```bash
-PKG_SHARE="$(ros2 pkg prefix --share articubot_one)"
-ros2 launch articubot_one localization_launch.py use_sim_time:=true \
-  map:="$PKG_SHARE/maps/slam_test_map_v2.yaml"
-```
-
-在另一终端启动 RViz。用 **2D Pose Estimate** 设置初始位姿，并检查激光扫描是否与地图对齐。
-
-```bash
-rviz2 -d "$(ros2 pkg prefix --share nav2_bringup)/rviz/nav2_default_view.rviz" \
-  --ros-args -p use_sim_time:=true
-```
-
-## Nav2 导航
-
-实时 SLAM 建图模式和 AMCL 定位模式均可启动 Nav2。Navfn（`GridBased`）负责全局路径规划，DWB 使用包内覆盖参数执行局部控制，代价地图接收激光扫描。启动后检查 Nav2 生命周期节点已激活，且 `/compute_path_to_pose` 和 `/navigate_to_pose` 可用。也可用 RViz 的 **Nav2 Goal** 手动发送目标。
-
-```bash
-ros2 launch articubot_one navigation_launch.py use_sim_time:=true autostart:=true
-```
-
-## 多目标巡航
-
-AMCL 定位和 Nav2 就绪后启动巡航。节点依次发送 `map` 坐标系下的三个固定航点 `(1, 0)`、`(2, 1)`、`(0, 1)`，单位为米。完成一轮后退出，遇到失败或取消时提前结束。更换地图时，先核对这些航点是否位于可通行区域。
-
-```bash
-ros2 launch articubot_one patrol.launch.py
-```
-
-## 前沿探索
-
-探索节点扫描实时 `OccupancyGrid` 的内部栅格，将八邻域内至少有一个未知格的空闲格视作前沿。节点按栅格扫描顺序选取候选，把栅格索引转换为 `map` 坐标系下的目标位姿。每轮最多预检查 8 个未被排除的候选，同一时间只执行一个导航目标。
-
-```bash
-ros2 launch articubot_one bringup_explore.launch.py
-```
-
-组合 Launch 按固定延时启动测试房间、SLAM Toolbox、Nav2 和前沿探索节点。SLAM 与 Nav2 各自在独立的 Launch 参数作用域中读取默认配置。需要逐步排查时，可按下文的复现步骤分终端启动。
-
-## 算法与工程改进
-
-- **路径可行性预检查**。通过 `GridBased` 规划器异步调用 `ComputePathToPose`。只有规划成功、路径包含至少两个位姿且终点误差不超过 `0.1 m`，才发送 `NavigateToPose`。
-- **Navfn 规划容差**。将 `GridBased.tolerance` 从 `0.5 m` 调至 `0.1 m`。较大的容差允许路径终点偏离原前沿，实验中曾出现导航反复返回成功、探索却没有相应进展的情况。
-- **目标冷却**。以单调时钟为准，已尝试目标附近的区域暂时排除 180 秒。导航成功时半径为 `0.45 m`，导航中止或路径预检查被拒时为 `0.65 m`，导航取消、目标请求被拒或其他导航错误时为 `0.60 m`。
-- **平面状态估计**。EKF 在 `two_d_mode` 下融合轮速里程计的 `vx`、`vy`、`wz` 与 IMU 的 `wz`。差速里程计提供接近零的横向速度，中继保留原测量并为其赋予暂定方差 `1.0e-5`。EKF 发布 `odom → base_link`。
+| 问题 | 排查与处理 | 验证依据 |
+| --- | --- | --- |
+| 静止时 EKF 横向速度协方差异常增大 | 检查轮速里程计、IMU 输入和 EKF 参数加载。利用差速车横向速度约束，并为该测量配置显式方差。 | 记录的 60 秒静止检查未再出现极端协方差发散。 |
+| 前沿附近反复收到导航成功 | 较大的 Navfn 容差允许路径终点偏离前沿，Nav2 另有 `0.25 m` 的导航目标位置容差。把 Navfn 容差从 `0.5 m` 降到 `0.1 m`，加入终点误差检查，并对已成功目标做空间冷却。 | 运行中读取了规划容差。实验中机器人经过测试房间内的多个区域。 |
+| 障碍附近或地图边缘的候选反复触发导航失败 | 上游流程直接提交导航。本项目先异步预检查路径，过滤规划失败、位姿数太少或终点误差过大的候选；尝试过的区域冷却 180 秒。 | 实验观察到多个不可规划候选在提交前被过滤。每轮结束日志给出前沿总数、过滤数、检查数、规划拒绝数和是否达到检查上限。 |
+| 组合启动时 DWB 无法激活 | SLAM 的 `params_file` 曾传入 Nav2，导致 DWB 无法加载 critics。组合 Launch 将两个子 Launch 放在独立作用域中；Nav2 再按主参数、控制器覆盖参数的顺序加载。分步启动时检查时钟、传感器、TF 和动作服务即可用。 | 在作用域修复前复现了 `No critics defined for FollowPath`，修复后控制器成功激活。 |
 
 ## 实验结果
 
-历史实验验证了 Gazebo 仿真、传感器接入、EKF 状态估计、SLAM Toolbox 建图、AMCL 定位、Nav2 导航与静态避障、单轮巡航、带路径预检查的前沿探索及地图保存。
+2026-11-26 冻结实验在测试房间发送了 **4 次导航请求**，其中 **3 次 `SUCCEEDED`、1 次 `ABORTED`**。多个不可规划候选在发送目标前被过滤。这组统计只描述该次运行。
 
-其中一次探索实验共发送 **4 次 `NavigateToPose` 请求**，结果为 **3 次 `SUCCEEDED`、1 次 `ABORTED`**。多个不可规划候选在发送导航请求前被过滤。这组计数只描述该次实验。
-
-| 已保存的探索地图 | 结果 |
+| 历史探索地图 | 结果 |
 | --- | ---: |
 | 地图尺寸 | 239 × 239 栅格 |
 | 分辨率 | 0.05 m/栅格 |
@@ -136,37 +62,109 @@ ros2 launch articubot_one bringup_explore.launch.py
 | 已知 / 未知栅格占比 | 97.39% / 2.61% |
 | 剩余前沿栅格 / 八连通区域 | 30 / 12 |
 
-**97.39% 是保存地图矩形范围内的已知栅格比例。** 实验未测定可达区域覆盖率，也未建立探索完成判据。历史快照和统计依据见 [2026-11-26 实验记录](experiments/2026-11-26-verification.md)。
+**97.39% 是保存地图矩形内的已知栅格比例。** 该实验未测量所有可达区域的覆盖率，也未建立探索完成判据。
 
-发布前复测使用干净构建和短时的 Fortress 无界面仿真。Nav2 以 `GridBased.tolerance=0.1` 激活，探索节点过滤了不可规划候选，并完成一个导航目标。单独启动定位时，AMCL 成功激活，地图服务器读到了安装目录内的 v2 地图。本轮未复测完整 GUI、整轮巡航或长时间探索。
+| 历史 EKF 检查 | Gazebo 里程计 | EKF 里程计 | 绝对差 |
+| --- | ---: | ---: | ---: |
+| 短时后退 | −0.101525 m | −0.101032 m | 0.000493 m |
+| 短时转动 | 22.4198° | 22.5586° | 0.1388° |
 
-## 分步复现
+上述结果衡量的是短时输出与仿真轮速里程计输入的一致性，实验未使用独立真值，也未测定长期精度。地图和计数来自冻结版本；修订后的探索节点使用格心作为目标，轨迹和导航结果可能变化。[历史实验记录](experiments/2026-11-26-verification.md) · [地图文件](maps/)
 
-1. 按**启动仿真**一节启动测试房间，等待 `/clock`、`/scan` 和 EKF 发布的 `odom → base_link`。
-2. 启动 SLAM Toolbox，等待 `/map` 和 `map → odom`。
-3. 启动 Nav2。运行 `ros2 param get /planner_server GridBased.tolerance` 确认容差为 `0.1`，再用 `ros2 action list -t` 检查路径规划和导航动作。
-4. 在另一终端启动前沿探索节点，观察路径检查、候选拒绝、路径通过、目标发送和导航结果日志。
-5. 在可写目录下使用新的文件名保存地图，保存工具会同时写出 YAML 和图像文件。
+修订版通过干净构建和前沿探索单元测试。在短时无界面 Fortress 复测中，DWB 加载 7 个 critics 并激活，Navfn 容差为 `0.1 m`。两个通过预检查的前沿目标导航成功，一个在 Nav2 完全激活前被拒，另一个在测试结束时仍在执行。日志还记录了一轮预检查连续拒绝 8 个候选并达到检查上限。独立发送 SIGINT 时，探索节点和协方差中继均正常退出。
+
+另一次已知地图复测中，AMCL 接受初始位姿，巡航通过第一个航点。修订版在第二个航点 `(2, 1)` 多次触发控制器进度检查后超时。已发布的基线在同一航点也触发了该错误，随后通过第二个航点，在第三个航点超时。两轮复测确认基线也会出现进度异常。对比整轮巡航的可靠性仍需要重复实验。本轮复测覆盖无界面仿真，未重测 GUI 或长时间探索。
+
+## 复现步骤
+
+### 安装和构建
+
+使用 Ubuntu 22.04、Python 3、ROS 2 Humble 和 Gazebo Fortress（Gazebo Sim 6.x）。安装 `rosdep` 和 `colcon`。第一次使用 `rosdep` 时，先运行 `sudo rosdep init`，再运行 `rosdep update`。可用 `ign gazebo --versions` 核对 Gazebo 版本。默认仿真 Launch 打开 GUI，需要可用的显示环境和 Ogre2 渲染。[功能包依赖](package.xml)
 
 ```bash
-ros2 run articubot_one frontier_explorer.py
-# 在另一个已加载工作空间环境的终端中保存实时地图
-ros2 run nav2_map_server map_saver_cli -f "$PWD/frontier_reproduction" \
+source /opt/ros/humble/setup.bash
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws
+git clone https://github.com/RongXiang101/ros2-mobile-robot-navigation.git src/articubot_one
+rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
+colcon build --packages-select articubot_one
+source install/setup.bash
+```
+
+### 分终端启动仿真、SLAM、导航和探索
+
+为每条持续运行的命令使用单独终端。每个终端都加载 ROS 2 Humble 和工作空间环境，使用同一个 ROS 域。
+
+1. 启动测试房间，等待 `/clock`、`/scan` 和 EKF 发布的 `odom → base_link`。
+
+   ```bash
+   PKG_SHARE="$(ros2 pkg prefix --share articubot_one)"
+   ros2 launch articubot_one launch_sim.launch.py world:="$PKG_SHARE/worlds/slam_test.sdf"
+   ```
+
+2. 启动 SLAM Toolbox，等待 `/map` 和 `map → odom`。
+
+   ```bash
+   ros2 launch articubot_one online_async_launch.py
+   ```
+
+3. 启动 Nav2，等待控制器和 BT Navigator 都进入 `active`，再检查规划器参数和动作服务。另开终端执行检查命令。
+
+   ```bash
+   ros2 launch articubot_one navigation_launch.py use_sim_time:=true autostart:=true
+   ros2 lifecycle get /controller_server
+   ros2 lifecycle get /bt_navigator
+   ros2 param get /planner_server GridBased.tolerance
+   ros2 action list -t
+   ```
+
+4. 确认 `/compute_path_to_pose` 和 `/navigate_to_pose` 可用后，启动探索。需要保存地图时，在另一个已加载环境的终端切到可写目录，并运行地图保存命令。
+
+   ```bash
+   ros2 run articubot_one frontier_explorer.py
+   ros2 run nav2_map_server map_saver_cli -f "$PWD/frontier_reproduction" \
+     --ros-args -p use_sim_time:=true
+   ```
+
+### 使用已保存地图定位并巡航
+
+切换模式前停止 SLAM 和探索节点。在相同测试房间内启动定位。用 RViz 的 **2D Pose Estimate** 设置初始位姿，再按上文启动 Nav2。可通过 `map` 参数选择不同的已保存地图。
+
+```bash
+PKG_SHARE="$(ros2 pkg prefix --share articubot_one)"
+ros2 launch articubot_one localization_launch.py use_sim_time:=true \
+  map:="$PKG_SHARE/maps/slam_test_map_v2.yaml"
+```
+
+```bash
+rviz2 -d "$(ros2 pkg prefix --share nav2_bringup)/rviz/nav2_default_view.rviz" \
   --ros-args -p use_sim_time:=true
 ```
 
-如需复现已知地图巡航，先停止探索流程，再按前文步骤启动同一个测试房间、AMCL、Nav2 和巡航节点。
+可用 RViz 的 **Nav2 Goal** 发送手动导航目标。巡航节点依次执行 `map` 坐标系下的三个固定航点 `(1, 0)`、`(2, 1)`、`(0, 1)`，单位为米。完成一轮后退出，失败或取消时提前结束。
+
+```bash
+ros2 launch articubot_one patrol.launch.py
+```
+
+### 组合启动和单元测试
+
+组合 Launch 以固定延时启动仿真、SLAM、导航和探索，适用于短时启动检查。各节点就绪较慢时，可按前面的步骤分终端启动。
+
+```bash
+ros2 launch articubot_one bringup_explore.launch.py
+colcon test --packages-select articubot_one --ctest-args -R '^test_frontier_explorer$'
+```
 
 ## 已知限制
 
-- 探索节点未实现正式的完成判据、前沿聚类或基于路径代价的排序。每轮检查上限和临时空间排除都可能使一部分候选未被访问。栅格扫描跳过地图四周最外侧的行和列。
-- 路径通过预检查后，`NavigateToPose` 仍会重新规划，目标的可达性可能变化。Nav2 的导航目标检查器另有 `0.25 m` 的位置容差。
-- 组合 Launch 使用固定延时。各组件就绪时间和单次导航结果会随运行环境变化。
-- 在 Humble 上中断程序时，前沿探索和协方差中继节点可能出现 `rclpy` 重复关闭错误。
-- EKF 使用暂定的测量协方差。横向速度约束假设侧滑可忽略。缺少绝对观测时，仅靠轮速里程计和 IMU 融合仍会漂移。项目验证范围为仿真。
+- 当前按栅格扫描顺序结合简单空间过滤选目标，未实现前沿聚类、信息增益评分、路径代价排序或正式的探索完成条件。达到每轮检查上限时仍可能有未检查候选。
+- 预检查通过后，Nav2 仍可能重规划。导航目标的验收容差和路径终点预检查阈值各自独立。
+- 局部控制采用 Nav2 DWB。当前实现未开发 MPC、Pure Pursuit 或其他运动控制器。
+- EKF 的协方差属于暂定值。侧滑或长期缺少绝对观测会降低估计质量。项目验证以仿真为主。
 
-## 致谢与许可证
+## 上游归属与许可证
 
-本仓库保留了 Samer Odeh 的 ROS 2 Autonomous Robot 项目历史及文件中的版权和归属声明，包括 Nav2 Launch 的归属信息。Odeh 的 Apache 2.0 许可涵盖他在自主导航基础实现、配置调参、仿真启动和文档方面的贡献。`docs/` 中的资料描述的是 Odeh 上游版本及其当时的 TF 配置。[上游项目](https://github.com/samerodeh/ros2_autonomous_robot) · [许可证](LICENSE)
+Samer Odeh 的上游项目提供了仿真场景、ROS–Gazebo 桥接、SLAM 和 Nav2 集成、DWB 调参及基础前沿探索和巡航节点。机器人模型源于 Josh Newans 的 Articulated Robotics 项目及其 Apache 2.0 的 `my_bot` 前身。上游 `articubot_one` 仓库没有声明仓库级许可证。本仓库保留原文件声明和 Odeh 对其贡献采用的 Apache 2.0 许可证。[Odeh 的项目](https://github.com/samerodeh/ros2_autonomous_robot) · [Articulated Robotics](https://github.com/joshnewans/articubot_one) · [`my_bot`](https://github.com/joshnewans/my_bot) · [LICENSE](LICENSE)
 
-基础机器人描述和继承的 Launch 文件源于 Josh Newans 的 Articulated Robotics `articubot_one`。该仓库没有声明仓库级许可证。更早的 `my_bot` 模板采用 Apache 2.0。各文件的许可范围以其来源及原始声明为准。[Articulated Robotics 上游仓库](https://github.com/joshnewans/articubot_one) · [my_bot 模板](https://github.com/joshnewans/my_bot)
+本项目增加并验证了 IMU/EKF 集成、路径可行性检查、目标冷却及单轮巡航，调整了 Navfn 规划容差，并集成现有的 DWB 控制器。`docs/` 内的历史 TF 图沿自上游，本文顶部的架构图展示当前数据流。
