@@ -85,7 +85,7 @@ Navigation Launch 先加载主参数文件，再给控制器进程叠加覆盖�
 source /opt/ros/humble/setup.bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws
-git clone https://github.com/RongXiang101/ros2-autonomous-vacuum-robot.git src/articubot_one
+git clone https://github.com/RongXiang101/ros2-mobile-robot-navigation.git src/articubot_one
 rosdep install --from-paths src --ignore-src --rosdistro humble -r -y
 colcon build --packages-select articubot_one
 source install/setup.bash
